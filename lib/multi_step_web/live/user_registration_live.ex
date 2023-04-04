@@ -4,6 +4,8 @@ defmodule MultiStepWeb.UserRegistrationLive do
   alias MultiStep.Accounts
   alias MultiStep.Accounts.User
 
+  def total_steps, do: 2
+
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-sm">
@@ -21,7 +23,7 @@ defmodule MultiStepWeb.UserRegistrationLive do
       <.simple_form
         for={@form}
         id="registration_form"
-        phx-submit="save"
+        phx-submit={if @current_step == total_steps(), do: "save", else: "next-step"}
         phx-change="validate"
         phx-trigger-action={@trigger_submit}
         action={~p"/users/log_in?_action=registered"}
@@ -31,11 +33,26 @@ defmodule MultiStepWeb.UserRegistrationLive do
           Oops, something went wrong! Please check the errors below.
         </.error>
 
-        <.input field={@form[:email]} type="email" label="Email" required />
-        <.input field={@form[:password]} type="password" label="Password" required />
+        <.input
+          field={@form[:email]}
+          type={if @current_step == 1, do: "email", else: "hidden"}
+          label="Email"
+          required
+        />
+
+        <.input
+          field={@form[:password]}
+          type={if @current_step == total_steps(), do: "password", else: "hidden"}
+          label="Password"
+          required
+        />
 
         <:actions>
-          <.button phx-disable-with="Creating account..." class="w-full">Create an account</.button>
+          <.button :if={@current_step > 1} type="button" phx-click="prev-step">Back</.button>
+
+          <.button phx-disable-with="Saving..." class="w-full">
+            <%= if @current_step < total_steps(), do: "Next", else: "Create account" %>
+          </.button>
         </:actions>
       </.simple_form>
     </div>
@@ -47,10 +64,32 @@ defmodule MultiStepWeb.UserRegistrationLive do
 
     socket =
       socket
+      |> assign(current_step: 1)
       |> assign(trigger_submit: false, check_errors: false)
+      |> assign(changeset: changeset)
       |> assign_form(changeset)
 
-    {:ok, socket, temporary_assigns: [form: nil]}
+    {:ok, socket}
+  end
+
+  def handle_event("prev-step", _params, socket) do
+    new_step = max(socket.assigns.current_step - 1, 1)
+    {:noreply, assign(socket, :current_step, new_step)}
+  end
+
+  def handle_event("next-step", _params, socket) do
+    current_step = socket.assigns.current_step
+    changeset = socket.assigns.changeset
+
+    step_invalid =
+      case current_step do
+        1 -> Enum.any?(Keyword.keys(changeset.errors), fn k -> k in [:email] end)
+        2 -> Enum.any?(Keyword.keys(changeset.errors), fn k -> k in [:password] end)
+        _ -> true
+      end
+
+    new_step = if step_invalid, do: current_step, else: current_step + 1
+    {:noreply, assign(socket, :current_step, new_step)}
   end
 
   def handle_event("save", %{"user" => user_params}, socket) do
@@ -72,7 +111,13 @@ defmodule MultiStepWeb.UserRegistrationLive do
 
   def handle_event("validate", %{"user" => user_params}, socket) do
     changeset = Accounts.change_user_registration(%User{}, user_params)
-    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+
+    socket =
+      socket
+      |> assign(changeset: changeset)
+      |> assign_form(Map.put(changeset, :action, :validate))
+
+    {:noreply, socket}
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do

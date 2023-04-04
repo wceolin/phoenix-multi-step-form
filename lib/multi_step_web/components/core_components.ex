@@ -337,7 +337,7 @@ defmodule MultiStepWeb.CoreComponents do
   def input(assigns) do
     ~H"""
     <div phx-feedback-for={@name}>
-      <.label for={@id}><%= @label %></.label>
+      <.label :if={@type != "hidden"} for={@id}><%= @label %></.label>
       <input
         type={@type}
         name={@name}
@@ -351,7 +351,7 @@ defmodule MultiStepWeb.CoreComponents do
         ]}
         {@rest}
       />
-      <.error :for={msg <- @errors}><%= msg %></.error>
+      <.error :for={msg <- @errors} :if={@type != "hidden"}><%= msg %></.error>
     </div>
     """
   end
